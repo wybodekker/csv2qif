@@ -1,0 +1,398 @@
+#!/bin/bash
+
+Version=2.07
+Myname="${0##*/}"
+
+:<<'DOC'
+= csv2qif - convert bank transaction downloads from CSV to QIF
+
+= Synopsis
+csv2qif [options] [ file ...]	
+
+== Options
+-h,--help	print this help and exit
+-H,--Help	print full documentation via less and exit
+-V,--version	print version and exit
+-y,--year=N	convert data for year N only
+-l,--lower	convert description field to lower case
+-t,--test	run in test mode
+-v,--verbose	print warning for unfound categories
+
+= Description
+csv2gif converts bank transaction downloads to the QIF format, which can be
+imported into GnuCash. CSV formats differ from one bank to the other.
+Currently, the script recognizes ING, RABO and ICS (International Card
+Services) formats only (on the basis of their field counts, 19 for RABO, 9
+for ING, 7 for ICS). All formats may occur in one file.
+
+The ICS data cannot be downloaded from the site, but you can select the
+data in their display and paste them into a file. This results in a tab-
+separated file that can be fed to csv2qif.
+
+The QIF formatted data are printed to standard output.
+Counts of converted lines for each bank account are printed to standard error. 
+
+= Configuration files
+csv2qif looks for the presence of two configuration files and uses the
+first it encounters:
+
+- |./csv2qif.ods|
+- |~/.csv2qif.ods|
+
+These configuration files must be OpenDocument spreadsheets. They can be
+used to assign records to accounts, based on regular expressions matching
+descriptions. The files should have three columns:
+
+- The first column contains a sorting character (explained later.)
+- the second column contains an account, for example: |Income:Pension|,
+- the third column contains one or more bash regular expressions,
+  (see, for example [this wiki page](wiki.bash-hackers.org/syntax/pattern)).
+  separated by newlines (|ctrl+Enter|) such that, if one of the
+  expressions matches the description, the transaction will be assigned
+  to the |Income:Pension| account.
+
+For example, my |~/.csv2qif.ods| contains the following row,
+which assigns records to the Expenses:Fuel account:
+
+0 Expenses:Fuel	 ^bp 
+		 ^shell 
+		 tankstation
+		 tinq 
+		 ^tamoil 
+		 ^total 
+
+This row says that any record which which starts with |bp |, |shell |, |tamoil | or 
+|total |, or contains |tankstation| or |tinq |, should be assigned to the 
+|Expenses:Fuel| account. Now if you sometimes also buy clothes at the 
+/Total Body Shop/, which also has the starting word "total" in its description, 
+your purchases there might go to |Expenses:Fuel|, even if you would have the 
+following row in your configuration file:
+
+0 Expenses:Clothing	 total body
+			 h&m
+
+This is because rows in the configuration file are executed in reverse sorting order.
+So in thise case, you should change the sorting character for the /Total Body Shop/ in,
+say, 1, so that it will be seen before the |Fuel| row.
+
+= Mismatches
+If none of the regular expressions in the configuration file matches with
+the description, an error message is issued on standard error:
+
+  csv2qif: no cat for prontophot holland b.v. vergoeding foto's 335618587
+
+You can then either leave this as it is and, when you import the .qif
+output into GnuCash, manually set the account.
+Or you can edit your |csv2qif.ods| file, and enter |prontophot| in the
+correct list of regular expressions and run csv2qif anew.
+
+When, in the startup phase, you have lots of such messages, it may be
+useful to use the |--test| option. This option suppresses the normal output
+and filters the error messages through |sort -u|, which will hopefully make
+their interpretation easier.
+
+= Depedendies
+csv2qif needs [odslis](github.com/wybodekker/odslist).
+
+= Author
+[Wybo Dekker](wybo@dekkerdocumenten.nl)
+
+= Copyright
+Released under the [GNU General Public License](www.gnu.org/copyleft/gpl.html)
+DOC
+
+REd='\e[38;5;9m' Mag='\e[38;5;5m' Nor='\e[0m'
+    die() { local i; for i; do echo -e "$Myname: $REd$i$Nor"; done 1>&2; exit 1; }
+   Warn() { local i; for i; do echo -e "$Myname: $Mag$i$Nor"; done 1>&2; }
+   warn() { $verbose && Warn "$@"; }
+helpsrt() { sed -n '/^= Synopsis/,/^= /p' "$0"|sed '1d;$d'; exit; }
+helpall() { sed -n "/^:<<'DOC'$/,/^DOC/p" "$0"|sed '1d;$d'|
+            less -P"$Myname-${Version/./·} (press h for help, q to quit)";exit; }
+
+:<<'DOC' #---------------------------------------------------------------------
+= excheck
+synopsis:	 excheck executable1 [executable2...]
+description:	check if all needed execs are there and getopt is GNU
+DOC
+#-------------------------------------------------------------------------------
+excheck() {
+   local ok=true i
+   ((BASH_VERSINFO>=4)) || die "Need bash version >= 4"
+   for i; do 
+      command -v "$i" > /dev/null && continue
+      Warn "Missing executable: $i"
+      ok=false
+   done
+   $ok || die
+   getopt -T 
+   [[ $? -ne 4 ]] && die "Your getopt is not GNU"
+}
+
+:<<'DOC' #----------------------------------------------------------------------
+= handle_options
+synopsis:	 handle_options "$@"
+description:	handle the options.
+globals used:	 Myname Version
+globals  set:	 args year lower qifout verbose
+DOC
+#-------------------------------------------------------------------------------
+handle_options() {
+   local options
+   options=$(getopt \
+      -n "$Myname" \
+      -o hHVIty:lv \
+      -l help,Help,version,year:,test,lower,verbose \
+      -- "$@"
+   ) || exit 1
+   eval set -- "$options"
+   year=
+   lower=false
+   verbose=false
+   qifout=/dev/stdout
+   while [ $# -gt 0 ]; do
+      case $1 in
+      (-h|--help)    helpsrt
+		     ;;
+      (-H|--Help)    helpall
+		     ;;
+      (-V|--version) echo $Version
+		     exit
+		     ;;
+      (-I)           instscript "$0" ||
+		       die 'the -I option is for developers only'
+		     exit
+		     ;;
+      (-y|--year)    year="$2"
+		     shift i
+		     ;;
+      (-l|--lower)   lower=true
+		     shift
+		     ;;
+      (-t|--test)    qifout=/dev/null
+		     shift
+		     ;;
+      (-v|--verbose) verbose=true
+		     shift
+		     ;;
+      (--)           shift
+		     break
+		     ;;
+      (*)            break
+		     ;;
+      esac
+   done
+   args=("$@")
+}
+
+join() { local IFS=""; echo "$*"; }
+
+excheck odslist
+handle_options "$@"
+set -- "${args[@]}"
+
+tmp=$(mktemp -t csv2qif.XXXXXXXXXX)
+trap 'rm -rf $tmp' 0 1 2 15
+
+rec=()
+header=nil
+recno=0
+declare -A saldi
+declare -A count
+set -o noglob
+shopt -s nocasematch
+
+declare -A category
+# find conf file as ./csv2qif.ods or ~/.csv2qif.ods, in that order:
+conffile=
+for i in ./csv2qif.ods $HOME/.csv2qif.ods; do
+   if [ -s "$i" ]; then
+      conffile=$i
+      break
+   fi
+done
+if [[ -n "$conffile" ]]; then 
+   Warn "using conf file $conffile"
+   sleep 1
+   while IFS=$'\t' read -r n s re; do 
+      [[ $n$s$re =~ ^[[:space:]]*$ ]] && continue    # skip empty lines
+      [[ $n =~ ^# ]] && continue
+      [[ ${#n} -eq 1 ]] ||
+         die "missing 1-character sort column in $conffile; adapt that for $Myname version >=2"
+      category["$n$re"]="$s"
+   done  < <(THOR_SILENCE_DEPRECATION='' odslist --sheet=1 --newline="|" "$conffile")
+else
+   Warn "No configuration file (./csv2qif.ods or ~/.csv2qif.ods) found!"
+   sleep 1
+fi
+
+test -z "$2" || die "I can handle only one input file"
+input="$1"
+test -n "$input" || die "I need an input file"
+while IFS='' read -r line; do 
+   (( recno++ ))
+   [[ $line =~ ^.Datum ]] && continue	# skip ING headers 
+   [[ $line =~ ^.IBAN ]] && continue	# skip RABO headers 
+   [[ $line =~ ^Credi ]] && continue	# skip RABO credit card  headers 
+   [[ $line =~ ^[[:space:]]*$ ]] && continue 	# skip empty lines
+   line=$(sed '
+	s/\r//			# remove carriage returns
+	s/ \t/\t/g		# remove spaces before tabs
+	s/\(","\|\t\)/→/g	# replace field separators ("," or tab) with special character →
+	s/^"\(.*\)"/\1/		# remove "´s at both ends (which are there if the separator is ",")
+	s/→$/→→/		# add an extra field at the end: empty end-fields are not detected.
+   ' <<<"$line")
+   if [[ ! $line =~ → ]]; then
+      line="${line//,/→}→"	# RABO Creditcard  has no "-delimiters
+   fi
+   IFS='→' read -ra rec <<< "$line" 
+
+   nfields=${#rec[@]}
+   # Aegon and Rabocard now both have 5 fields
+   # Rabocard has € in third field - let's remove that:
+   if [[ $nfields -eq 5 && ${rec[2]} == € ]]; then 
+      unset 'rec[2]'
+      nfields=4
+   fi
+
+   case $nfields in
+        # RABO vanaf sep 2018
+   (26) acc=${rec[0]}
+        date=${rec[4]//-/}
+        amount=${rec[6]/,/.}
+        dc=C
+        d=D
+        c=C
+	# join fields 9-10 and 18-26 with space between them
+	description=$(join "${rec[*]:9:2} ${rec[*]:18:9}")
+        ;;
+        # RABO t/m aug 2018
+   (19) acc=${rec[0]}
+        date=${rec[2]}
+        amount=${rec[4]}
+        dc=${rec[3]}
+        d=D
+        c=C
+	# join fields 10-17 with space between them, but fields with 
+	# exactly 35 chars must join spacelessly with their right neighbour.
+	j=("${rec[@]:10:8}")
+	for i in 0 1 2 3 4 5 6 7; do 
+	  k="${j[$i]}"
+	  [[ ${#k} == 35 ]] || j[$i]="$k "
+	done
+	description=$(join "${rec[6]} ${j[*]}")
+        ;;
+	# RaboCard (starting 2019)
+   (13) acc='Activa:RaboCard'
+        date=${rec[6]//-/}
+        amount=${rec[7]/,/.}
+        dc=C
+        d=D
+        c=C
+        description="${rec[9]}"
+	[[ $description = 'incasso - vorig overzicht' ]] && continue
+        ;;
+        # ING
+    (9) acc=${rec[2]}
+        date=${rec[0]}
+        amount=${rec[6]/,/.}
+        dc=${rec[5]}
+        d=Af
+        c=Bij
+        description="${rec[7]} ${rec[8]} ${rec[1]}"
+        ;;
+	# ICS
+    (7) acc=CreditCard
+        date=${rec[0]:6:4}${rec[0]:3:2}${rec[0]:0:2}
+        amount=${rec[6]:2}
+        dc=${rec[4]}
+        d=Debet
+        c=Credit
+        description="${rec[2]} ${rec[3]} ${rec[5]}"
+        ;;
+	# Aegon spaar
+    (5)	date=${rec[0]}
+        acc=${rec[1]}
+	description=${rec[2]}
+	dc=${rec[3]}
+        amount=${rec[4]}
+	d=D
+	c=C
+	;;
+	# rabo card (up to 2018)
+    (4)	acc=RaboCard
+        date=${rec[0]:6:4}${rec[0]:3:2}${rec[0]:0:2}
+	description=${rec[1]}
+	amount=${rec[3]}
+	dc=D
+	d=D
+	c=C
+	;;
+    (*) die "Line $recno: Unrecognized number of fields ($nfields); must be:" \
+	    " 4 (RaboCard)" \
+	    " 5 (Aegon spaar)" \
+	    " 7 (CreditCard)" \
+	    " 9 (ING)" \
+	    "19 (RABO old)" \
+	    "26 (RABO new)"
+   esac
+   [[ -n $year && ! $date =~ ^$year ]] && continue
+   account=${acc// /}
+   (( count["$account"]++ ))
+
+   cents=${amount/[.,]/}
+   cents=${cents##0} # remove leading zeros
+
+   case $dc in
+      ("$d") amount=-$amount; cents=-$cents;;
+      ("$c") ;;
+      (*) die "Invalid value for debit/credit field: '${rec[4]}' (must be '$d' or '$c')"
+   esac
+
+   [[ -z ${saldi[$account]} ]] && saldi[$account]=0
+   (( saldi["$account"]+=cents ))
+
+   description=$(sed 's/^ *\(.*\) *$/\1/;s/  */ /g;s/\\//g' <<<"$description")
+   [[ $lower == true ]] && description=${description,,}
+
+   h="!Account\\nN$account\\nTBank\\n^\\n!Type:Bank"
+   if [[ "$h" != "$header" ]]; then
+      echo -e "$h"
+      header="$h"
+   fi
+   echo "D${date:0:4}/${date:4:2}/${date:6:2}"
+   echo "T$amount"
+   echo "P$description"
+   found=false
+   errmess=''
+   while read -r i; do
+      [[ $re =~ \|$ ]] && errmess="regexp ($re) ends with empty field"
+      re="${i#?}" # remove sorting character
+      re="${re%|}" # remove trailing |
+      [[ $description =~ ${re/ /\\ } ]] && {
+         echo "L${category[$i]}"
+         found=true
+         break
+      }
+   done < <(
+      for i in "${!category[@]}"; do
+         echo "$i"
+      done |sort -r
+   )
+   [[ -n $errmess ]] && warn "errmess=$errmess"
+   $found || warn "no cat for$Nor$(printf '%8.2f' "$amount") $description"
+   echo  "^"
+done < <(cat "$input") > $qifout
+
+if [[ $qifout == /dev/null ]]; then 
+   # testing and suppressing qif
+   sed -e 's/csv2qif: no cat for //' "$tmp" |sort -u >/dev/stderr
+else
+   cat "$tmp" >/dev/stderr
+fi
+
+for i in "${!count[@]}"; do
+   a=${saldi[$i]}	# saldo in cents
+   a=$(bc <<< "$a/100")	# saldo in euro
+   printf '%12.2f %4d %s\n' "$a" "${count[$i]}" "$i"
+done 1>&2
+cat "$tmp"
