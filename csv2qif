@@ -339,8 +339,7 @@ while IFS='' read -r line; do
    account=${acc// /}
    (( count["$account"]++ ))
 
-   cents=${amount/[.,]/}
-   cents=${cents##0} # remove leading zeros
+   cents=$(bc <<<"${amount//[.,+]/}") # -0,89 -> -89
 
    case $dc in
       ("$d") amount=-$amount; cents=-$cents;;
