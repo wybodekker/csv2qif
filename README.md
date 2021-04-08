@@ -5,7 +5,7 @@
 |    type | bash
 |  author | Wybo Dekker
 |   email | wybo@dekkerdocumenten.nl
-| version | 2.07
+| version | 2.08
 | license | GNU General Public License
 
 csv2gif converts bank transaction downloads to the QIF format, which can be
