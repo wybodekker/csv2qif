@@ -1,6 +1,6 @@
 #!/bin/bash
 
-Version=2.08
+Version=2.09
 Myname="${0##*/}"
 
 :<<'DOC'
@@ -95,7 +95,7 @@ their interpretation easier.
 csv2qif needs [odslis](github.com/wybodekker/odslist).
 
 = Author
-[Wybo Dekker](wybo@dekkerdocumenten.nl)
+[Wybo Dekker](wybodekker@me.com)
 
 = Copyright
 Released under the [GNU General Public License](www.gnu.org/copyleft/gpl.html)
@@ -198,10 +198,10 @@ header=nil
 recno=0
 declare -A saldi
 declare -A count
+declare -A category
 set -o noglob
 shopt -s nocasematch
 
-declare -A category
 # find conf file as ./csv2qif.ods or ~/.csv2qif.ods, in that order:
 conffile=
 for i in ./csv2qif.ods $HOME/.csv2qif.ods; do
@@ -213,13 +213,14 @@ done
 if [[ -n "$conffile" ]]; then 
    Warn "using conf file $conffile"
    sleep 1
-   while IFS=$'\t' read -r n s re; do 
+   while IFS=, read -r n s re; do 
       [[ $n$s$re =~ ^[[:space:]]*$ ]] && continue    # skip empty lines
       [[ $n =~ ^# ]] && continue
       [[ ${#n} -eq 1 ]] ||
-         die "missing 1-character sort column in $conffile; adapt that for $Myname version >=2"
-      category["$n$re"]="$s"
-   done  < <(THOR_SILENCE_DEPRECATION='' odslist --sheet=1 --newline="|" "$conffile")
+         die "missing 1-character sort column in $conffile"\
+	     "adapt that for $Myname version >=2"
+      category["$n$s"]="$re"
+   done  < <(odslist --format=csv "$conffile")
 else
    Warn "No configuration file (./csv2qif.ods or ~/.csv2qif.ods) found!"
    sleep 1
@@ -360,11 +361,12 @@ while IFS='' read -r line; do
    found=false
    errmess=''
    while read -r i; do
-      [[ $re =~ \|$ ]] && errmess="regexp ($re) ends with empty field"
-      re="${i#?}" # remove sorting character
-      re="${re%|}" # remove trailing |
-      [[ $description =~ ${re/ /\\ } ]] && {
-         echo "L${category[$i]}"
+      cat="${i#?}" # remove sorting character
+      re="${category[$i]//⇒/|}"
+      [[ $re =~ ⇒$ ]] && errmess="regexp ($re) ends with empty field"
+      re="${re%⇒}" # remove trailing |
+      [[ $description =~ ${re// /\\ } ]] && {
+         echo "L$cat"
          found=true
          break
       }
