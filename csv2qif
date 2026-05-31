@@ -3,13 +3,14 @@
 Version=2.09
 Myname="${0##*/}"
 
-:<<'DOC'
+doc=$(cat \
+<<'DOC'
 = csv2qif - convert bank transaction downloads from CSV to QIF
 
 = Synopsis
 csv2qif [options] [ file ...]	
 
-== Options
+= Options
 -h,--help	print this help and exit
 -H,--Help	print full documentation via less and exit
 -V,--version	print version and exit
@@ -100,14 +101,16 @@ csv2qif needs [odslis](github.com/wybodekker/odslist).
 = Copyright
 Released under the [GNU General Public License](www.gnu.org/copyleft/gpl.html)
 DOC
+)
 
-REd='\e[38;5;9m' Mag='\e[38;5;5m' Nor='\e[0m'
-    die() { local i; for i; do echo -e "$Myname: $REd$i$Nor"; done 1>&2; exit 1; }
-   Warn() { local i; for i; do echo -e "$Myname: $Mag$i$Nor"; done 1>&2; }
+# --- colors, help from embedded doc, die and warn ---------------------------------
+[ -t 1 ] && { Red=$'\e[1;31m' Mag=$'\e[1;35m' Nor=$'\e[0m'; } || Red='' Mag='' Nor=''
+nv="-$Myname-${Version/./\\.} (press h for help, q to quit)"
+helpsrt() { sed -n '/^= Synopsis/,/^= Desc/{//d;p}' <<<"$doc"; exit; }
+helpall() { less -P"$nv" <<<"$doc"; exit; }
+    die() { printf "%s$Nor\n" "${@/#/$Myname: $Red}" >&2; exit 1; }
+   Warn() { printf "%s$Nor\n" "${@/#/$Myname: $Mag}" >&2; }
    warn() { $verbose && Warn "$@"; }
-helpsrt() { sed -n '/^= Synopsis/,/^= /p' "$0"|sed '1d;$d'; exit; }
-helpall() { sed -n "/^:<<'DOC'$/,/^DOC/p" "$0"|sed '1d;$d'|
-            less -P"$Myname-${Version/./·} (press h for help, q to quit)";exit; }
 
 :<<'DOC' #---------------------------------------------------------------------
 = excheck
@@ -268,8 +271,8 @@ while IFS='' read -r line; do
 	# exactly 35 chars must join spacelessly with their right neighbour.
 	j=("${rec[@]:10:8}")
 	for i in 0 1 2 3 4 5 6 7; do 
-	  k="${j[$i]}"
-	  [[ ${#k} == 35 ]] || j[$i]="$k "
+	  k=${j[i]}
+	  [[ ${#k} == 35 ]] || j[i]="$k "
 	done
 	description=$(join "${rec[6]} ${j[*]}")
         ;;
@@ -344,7 +347,7 @@ while IFS='' read -r line; do
       (*) die "Invalid value for debit/credit field: '${rec[4]}' (must be '$d' or '$c')"
    esac
 
-   [[ -z ${saldi[$account]} ]] && saldi[$account]=0
+   [[ -z ${saldi["$account"]} ]] && saldi["$account"]=0
    (( saldi["$account"]+=cents ))
 
    description=$(sed 's/^ *\(.*\) *$/\1/;s/  */ /g;s/\\//g' <<<"$description")
