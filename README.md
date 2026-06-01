@@ -25,6 +25,10 @@ convert bank transaction downloads from CSV to QIF
 
 |option|description|
 |:-|:-|
-|-h,--help	|[1;31m!! missing comment !![0m|
-|-H,--Help	|[1;31m!! missing comment !![0m|
-|-V,--version	|[1;31m!! missing comment !![0m|
+|-h,--help	|print this help and exit|
+|-H,--Help	|print full documentation via less and exit|
+|-V,--version	|print version and exit|
+|-y,--year=X	|convert data for year X only|
+|-l,--lower	|convert description field to lower case|
+|-t,--test	|run in test mode|
+|-v,--verbose	|print warning for unfound categories|

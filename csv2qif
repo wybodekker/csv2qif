@@ -14,7 +14,7 @@ csv2qif [options] [ file ...]
 -h,--help	print this help and exit
 -H,--Help	print full documentation via less and exit
 -V,--version	print version and exit
--y,--year=N	convert data for year N only
+-y,--year=X	convert data for year X only
 -l,--lower	convert description field to lower case
 -t,--test	run in test mode
 -v,--verbose	print warning for unfound categories
@@ -154,28 +154,35 @@ handle_options() {
    qifout=/dev/stdout
    while [ $# -gt 0 ]; do
       case $1 in
-      (-h|--help)    helpsrt
+      (-h|--help)    # print this help and exit
+		     helpsrt
 		     ;;
-      (-H|--Help)    helpall
+      (-H|--Help)    # print full documentation via less and exit
+		     helpall
 		     ;;
-      (-V|--version) echo $Version
+      (-V|--version) # print version and exit
+		     echo $Version
 		     exit
+		     ;;
+      (-y|--year)    # convert data for year X only
+		     year="$2"
+		     shift i
+		     ;;
+      (-l|--lower)   # convert description field to lower case
+		     lower=true
+		     shift
+		     ;;
+      (-t|--test)    # run in test mode
+		     qifout=/dev/null
+		     shift
+		     ;;
+      (-v|--verbose) # print warning for unfound categories
+		     verbose=true
+		     shift
 		     ;;
       (-I)           instscript "$0" ||
 		       die 'the -I option is for developers only'
 		     exit
-		     ;;
-      (-y|--year)    year="$2"
-		     shift i
-		     ;;
-      (-l|--lower)   lower=true
-		     shift
-		     ;;
-      (-t|--test)    qifout=/dev/null
-		     shift
-		     ;;
-      (-v|--verbose) verbose=true
-		     shift
 		     ;;
       (--)           shift
 		     break
